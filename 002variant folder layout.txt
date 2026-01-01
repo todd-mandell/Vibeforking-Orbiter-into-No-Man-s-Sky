@@ -1,0 +1,16 @@
+Orbiter/
+  Orbitersdk/
+    samples/
+      SurvivalPack/
+        EVA.h
+        EVA.cpp
+        SurvivalShip.h
+        SurvivalShip.cpp
+        Module.cpp
+        SurvivalPack.vcxproj  (your C++ DLL project)
+  Config/
+    Vessels/
+      EVA.cfg
+      SurvivalShip.cfg
+  Scenarios/
+    SurvivalPack Test.scn
