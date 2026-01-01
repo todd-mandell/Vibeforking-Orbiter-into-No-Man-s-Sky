@@ -32,4 +32,6 @@ private:
     void   UpdateEnvironment(double simdt);
     void   ApplyEnvironmentToShip(double simdt);
     void   ApplyRandomMicrometeorites(double simdt);
+
+    void   SpawnEVA(); // create EVA vessel at airlock
 };
