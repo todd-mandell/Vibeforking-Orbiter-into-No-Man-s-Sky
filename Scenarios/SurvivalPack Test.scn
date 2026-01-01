@@ -1,0 +1,40 @@
+BEGIN_DESC
+Test EVA + SurvivalShip with environment, hull, pressure, radiation, temperature and micrometeorites.
+END_DESC
+
+BEGIN_ENVIRONMENT
+  System Sol
+  Date MJD 51982.000000
+END_ENVIRONMENT
+
+BEGIN_FOCUS
+  Ship Ship-1
+END_FOCUS
+
+BEGIN_CAMERA
+  TARGET Ship-1
+  MODE Cockpit
+END_CAMERA
+
+BEGIN_HUD
+END_HUD
+
+BEGIN_MFD Left
+END_MFD
+
+BEGIN_MFD Right
+END_MFD
+
+BEGIN_SHIPS
+Ship-1: SurvivalShip
+  STATUS Orbit Earth
+  RPOS 6778137.0 0 0
+  RVEL 0 7672.6 0
+  AROT 0 0 0
+
+EVA-1: EVA
+  STATUS Orbit Earth
+  RPOS 6778137.0 5.0 0
+  RVEL 0 7672.6 0
+  AROT 0 0 0
+END_SHIPS
