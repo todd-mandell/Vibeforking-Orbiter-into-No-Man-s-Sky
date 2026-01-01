@@ -1,5 +1,9 @@
 BEGIN_DESC
-Test EVA + SurvivalShip with environment, hull, pressure, radiation, temperature and micrometeorites.
+Test EVA + SurvivalShip with survival systems:
+- Ship hull, pressure, O2, radiation, temp, micrometeorites, airlock
+- EVA suit with radiation, toxicity, pressure, temp, micrometeorites, mining
+- E: EVA from ship / re-enter ship
+- A: Toggle ship airlock
 END_DESC
 
 BEGIN_ENVIRONMENT
@@ -27,14 +31,9 @@ END_MFD
 
 BEGIN_SHIPS
 Ship-1: SurvivalShip
-  STATUS Orbit Earth
-  RPOS 6778137.0 0 0
-  RVEL 0 7672.6 0
-  AROT 0 0 0
-
-EVA-1: EVA
-  STATUS Orbit Earth
-  RPOS 6778137.0 5.0 0
-  RVEL 0 7672.6 0
+  STATUS Landed Earth
+  POS 0.0000 0.0000
+  HEADING 0.0
+  ALT 1.0
   AROT 0 0 0
 END_SHIPS
