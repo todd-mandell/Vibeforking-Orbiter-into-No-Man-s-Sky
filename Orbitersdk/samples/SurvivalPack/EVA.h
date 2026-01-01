@@ -26,7 +26,7 @@ private:
     double suitIntegrity;   // 0–1
     double health;          // 0–1
 
-    // Base suit limits / protection (no upgrades)
+    // Base suit limits / protection
     double maxSafePressure;       // Pa
     double maxSafeTempLow;        // °C
     double maxSafeTempHigh;       // °C
@@ -37,16 +37,16 @@ private:
     double suitCoolingPower;      // °C “absorbed”
     double suitHeatingPower;      // °C “added”
 
-    // Upgrade: Toxic shield (NMS-style)
-    double toxicShieldCapacity;   // max toxic shield units
+    // Toxic shield (upgrade)
+    double toxicShieldCapacity;   // max shield units
     double toxicShieldCharge;     // current shield units
     double toxicShieldEfficiency; // extra protection scaling
     double toxicShieldDrainRate;  // per second in toxic env
-    bool   toxicShieldOnline;     // toggle if needed
+    bool   toxicShieldOnline;
 
-    // Mystical ION battery
+    // ION battery
     IonBattery ion;
-    double     ionLeakFactor;     // how much radiation per unit charge when damaged
+    double     ionLeakFactor;     // radiation per unit charge when damaged
 
     // Inventory
     std::map<std::string, int> inventory;
@@ -56,7 +56,7 @@ private:
     VECTOR3 resourcePos;
     double  miningRange;
 
-    // Environment state
+    // Environment
     double envPressure;     // Pa
     double envRadiation;    // 0–1
     double envToxicity;     // 0–1
@@ -81,10 +81,13 @@ private:
 
     void   TryReenterShip();
 
-    // Upgrade & crafting logic
+    // Upgrades & ION
     void   UpdateToxicShield(double simdt);
     void   ApplyIonBatteryEffects(double simdt);
     bool   ConsumeIonCharge(double amount);
     void   RechargeToxicShieldFromIon();
-    void   CraftIonCell(); // craft charge using mined resources
+    void   CraftIonCell();
+
+    // Gravity effects
+    void   ApplyGravityEffects(double simdt);
 };
