@@ -11,9 +11,9 @@ struct PlanetHazardProfile {
     bool   hasAtmosphere;
     bool   corrosive;       // true for acid atmospheres (e.g., Venus)
     bool   oceanWorld;      // true for subsurface/global oceans (e.g., Europa)
-    bool   gasGiant;        // true for gas giants (Jupiter, Saturn, etc.)
+    bool   gasGiant;        // true for gas giants (Jupiter, etc.)
 };
 
-// Get hazard profile for the current primary body (planet or moon).
-// If body not recognized, falls back to a neutral default.
+// Get hazard profile for current primary body.
+// Fallback is a neutral cold vacuum if unknown.
 PlanetHazardProfile GetPlanetHazardProfile(OBJHANDLE hBody);
