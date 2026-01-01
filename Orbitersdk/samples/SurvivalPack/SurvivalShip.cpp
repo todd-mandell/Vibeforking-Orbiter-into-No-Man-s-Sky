@@ -1,5 +1,4 @@
 #include "SurvivalShip.h"
-#include "orbitersdk.h"
 #include <cmath>
 #include <cstring>
 
@@ -14,8 +13,8 @@ SurvivalShip::SurvivalShip(OBJHANDLE hVessel, int flightmodel)
     : VESSEL2(hVessel, flightmodel)
 {
     hullIntegrity    = 1.0;
-    internalPressure = 1.0e5;   // ~1 atm
-    internalOxygen   = 3600.0;  // 1 hour
+    internalPressure = 1.0e5;
+    internalOxygen   = 3600.0;
     powerLevel       = 1.0;
 
     radiationShield   = 0.8;
@@ -28,6 +27,8 @@ SurvivalShip::SurvivalShip(OBJHANDLE hVessel, int flightmodel)
     inVacuum       = true;
 
     airlockOpen    = false;
+
+    currentProfile = PlanetHazardProfile{};
 }
 
 void SurvivalShip::clbkSetClassCaps(FILEHANDLE cfg)
@@ -35,7 +36,6 @@ void SurvivalShip::clbkSetClassCaps(FILEHANDLE cfg)
     SetEmptyMass(20000.0);
     SetSize(10.0);
 
-    // Simple main engine
     THRUSTER_HANDLE th = CreateThruster(_V(0,0,-5), _V(0,0,1), 2.0e5);
     AddExhaust(th, 2.0, 0.5);
 }
@@ -48,11 +48,14 @@ void SurvivalShip::UpdateEnvironment(double simdt)
     OBJHANDLE hRef = GetSurfaceRef();
     if (!hRef) {
         envPressure    = 0.0;
-        envRadiation   = 2.0;
+        envRadiation   = 0.7;
         envTemperature = -150.0;
         inVacuum       = true;
+        currentProfile = PlanetHazardProfile{};
         return;
     }
+
+    currentProfile = GetPlanetHazardProfile(hRef);
 
     double radius = oapiGetSize(hRef);
     VECTOR3 gpos;
@@ -64,7 +67,7 @@ void SurvivalShip::UpdateEnvironment(double simdt)
     double alt = r - radius;
 
     ATMOSPHEREPARAM atm;
-    bool hasAtm = GetAtmosphericParams(atm) != 0;
+    bool hasAtm = GetAtmosphericParams(atm) != 0 && currentProfile.hasAtmosphere;
     if (hasAtm) {
         envPressure = GetAtmPressure();
         if (envPressure > 0.0) {
@@ -77,21 +80,23 @@ void SurvivalShip::UpdateEnvironment(double simdt)
         inVacuum    = true;
     }
 
-    double baseRad = 1.0;
-    if (inVacuum) {
-        baseRad = 2.0;
-        if (alt > 1.0e6) baseRad = 3.0;
+    // Radiation
+    double baseRad = currentProfile.surfaceRadiation;
+    if (currentProfile.gasGiant) {
+        if (alt < 0) baseRad = 1.0;
     } else {
-        if (envPressure > 5.0e4) baseRad = 0.5;
-        if (envPressure > 1.0e5) baseRad = 0.2;
+        if (alt > 1.0e6) baseRad += 0.2;
     }
-    envRadiation = baseRad;
+    envRadiation = Clamp(baseRad, 0.0, 1.0);
 
-    if (inAtmosphere) {
+    // Temperature
+    if (inAtmosphere && currentProfile.hasAtmosphere) {
         double T = GetAtmTemperature();
-        envTemperature = T - 273.15;
+        double tempC = T - 273.15;
+        // Blend with profile baseline
+        envTemperature = 0.5 * tempC + 0.5 * currentProfile.baseTemp;
     } else {
-        envTemperature = -150.0;
+        envTemperature = currentProfile.baseTemp;
     }
 }
 
@@ -109,40 +114,47 @@ void SurvivalShip::ApplyRandomMicrometeorites(double simdt)
         if (hullIntegrity < 0.0) hullIntegrity = 0.0;
         oapiWriteLog("SurvivalShip: Micrometeorite hit!");
 
-        // Slight pressure loss
         internalPressure *= 0.9;
     }
 }
 
 void SurvivalShip::ApplyEnvironmentToShip(double simdt)
 {
-    // Hull breach: slow depressurization
+    // Hull breach
     if (hullIntegrity <= 0.0) {
         internalPressure *= (1.0 - 0.5 * simdt);
         if (internalPressure < 0.0) internalPressure = 0.0;
     }
 
-    // Airlock equalization
+    // Airlock equalization with environment (dangerous on bad planets)
     if (airlockOpen) {
-        // Simple equalization towards envPressure
-        double rate = 0.5; // per second
+        double rate = 0.5;
         double diff = envPressure - internalPressure;
         internalPressure += diff * rate * simdt;
         if (internalPressure < 0.0) internalPressure = 0.0;
     }
 
-    // Internal oxygen consumption
     internalOxygen -= simdt * 1.0;
     if (internalOxygen < 0.0) internalOxygen = 0.0;
 
-    // Radiation
+    // Radiation vs hull
     double effectiveRad = envRadiation * (1.0 - radiationShield);
     if (effectiveRad > 0.1) {
         hullIntegrity -= simdt * 0.0005 * effectiveRad;
     }
 
-    // Temperature stress
-    double tempDelta = envTemperature - 20.0; // assume internal target 20°C
+    // Corrosive atmospheres (like Venus) slowly damage hull
+    if (currentProfile.corrosive && inAtmosphere) {
+        hullIntegrity -= simdt * 0.0005;
+    }
+
+    // Gas giants: impossible environment
+    if (currentProfile.gasGiant && inAtmosphere) {
+        hullIntegrity -= simdt * 0.01;
+    }
+
+    // Temperature stress vs internal ~20°C
+    double tempDelta = envTemperature - 20.0;
     tempDelta *= (1.0 - thermalInsulation);
     if (std::fabs(tempDelta) > 50.0) {
         hullIntegrity -= simdt * 0.0005 *
@@ -159,8 +171,12 @@ void SurvivalShip::SpawnEVA()
         return;
     }
 
-    // Get airlock position in global coords: offset in local frame
-    VECTOR3 airlockLocal = _V(0, 0, -5); // adjust to your model
+    // If atmosphere is highly toxic or corrosive, warn (still allow for now).
+    if (currentProfile.corrosive || currentProfile.atmToxicity > 0.8) {
+        oapiWriteLog("SurvivalShip: WARNING - EVA into lethal atmosphere");
+    }
+
+    VECTOR3 airlockLocal = _V(0, 0, -5);
     VECTOR3 airlockGlobal;
     Local2Global(airlockLocal, airlockGlobal);
 
@@ -185,7 +201,6 @@ void SurvivalShip::SpawnEVA()
         oapiSetFocusObject(hEVA);
     }
 
-    // Optional: airlock opens during EVA
     airlockOpen = true;
 }
 
@@ -209,7 +224,6 @@ int SurvivalShip::clbkConsumeBufferedKey(DWORD key, bool down, char *kstate)
     }
 
     if (key == OAPI_KEY_E) {
-        // Spawn EVA at airlock
         SpawnEVA();
         return 1;
     }
