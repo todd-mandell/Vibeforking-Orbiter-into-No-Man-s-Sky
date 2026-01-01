@@ -1,5 +1,6 @@
 #pragma once
 #include "orbitersdk.h"
+#include "PlanetHazards.h"
 
 class SurvivalShip : public VESSEL2 {
 public:
@@ -13,19 +14,18 @@ public:
 private:
     double hullIntegrity;     // 0–1
     double internalPressure;  // Pa
-    double internalOxygen;    // seconds of breathable air
+    double internalOxygen;    // seconds
     double powerLevel;        // 0–1
 
-    // Protection
     double radiationShield;   // 0–1
     double thermalInsulation; // 0–1
 
-    // Environment at ship location
     double envPressure;
     double envRadiation;
     double envTemperature;
     bool   inAtmosphere;
     bool   inVacuum;
+    PlanetHazardProfile currentProfile;
 
     bool   airlockOpen;
 
@@ -33,5 +33,5 @@ private:
     void   ApplyEnvironmentToShip(double simdt);
     void   ApplyRandomMicrometeorites(double simdt);
 
-    void   SpawnEVA(); // create EVA vessel at airlock
+    void   SpawnEVA();
 };
