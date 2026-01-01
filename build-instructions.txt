@@ -1,0 +1,13 @@
+Build instructions
+
+    Create a new Win32 DLL project in Orbitersdk/samples/SurvivalPack/.
+
+    Add EVA.cpp, EVA.h, SurvivalShip.cpp, SurvivalShip.h, Module.cpp.
+
+    Link against Orbiter SDK libraries (use an existing sample project as a template).
+
+    Set output path to ..\..\Modules\SurvivalPack.dll.
+
+    Build in Release mode.
+
+    Launch Orbiter and open SurvivalPack Test scenario.
