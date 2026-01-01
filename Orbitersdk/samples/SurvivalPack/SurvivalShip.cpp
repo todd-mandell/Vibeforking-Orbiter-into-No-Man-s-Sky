@@ -1,5 +1,7 @@
 #include "SurvivalShip.h"
+#include "orbitersdk.h"
 #include <cmath>
+#include <cstring>
 
 static double Clamp(double v, double lo, double hi)
 {
@@ -11,10 +13,10 @@ static double Clamp(double v, double lo, double hi)
 SurvivalShip::SurvivalShip(OBJHANDLE hVessel, int flightmodel)
     : VESSEL2(hVessel, flightmodel)
 {
-    hullIntegrity   = 1.0;
-    internalPressure= 1.0e5;   // ~1 atm
-    internalOxygen  = 3600.0;  // 1 hour
-    powerLevel      = 1.0;
+    hullIntegrity    = 1.0;
+    internalPressure = 1.0e5;   // ~1 atm
+    internalOxygen   = 3600.0;  // 1 hour
+    powerLevel       = 1.0;
 
     radiationShield   = 0.8;
     thermalInsulation = 0.8;
@@ -24,6 +26,7 @@ SurvivalShip::SurvivalShip(OBJHANDLE hVessel, int flightmodel)
     envTemperature = 0.0;
     inAtmosphere   = false;
     inVacuum       = true;
+
     airlockOpen    = false;
 }
 
@@ -74,7 +77,6 @@ void SurvivalShip::UpdateEnvironment(double simdt)
         inVacuum    = true;
     }
 
-    // Radiation similar logic as EVA (simplified)
     double baseRad = 1.0;
     if (inVacuum) {
         baseRad = 2.0;
@@ -85,7 +87,6 @@ void SurvivalShip::UpdateEnvironment(double simdt)
     }
     envRadiation = baseRad;
 
-    // Ambient temperature: use atmospheric if present, else simple
     if (inAtmosphere) {
         double T = GetAtmTemperature();
         envTemperature = T - 273.15;
@@ -108,38 +109,84 @@ void SurvivalShip::ApplyRandomMicrometeorites(double simdt)
         if (hullIntegrity < 0.0) hullIntegrity = 0.0;
         oapiWriteLog("SurvivalShip: Micrometeorite hit!");
 
-        // Hit can slightly drop internal pressure
+        // Slight pressure loss
         internalPressure *= 0.9;
     }
 }
 
 void SurvivalShip::ApplyEnvironmentToShip(double simdt)
 {
+    // Hull breach: slow depressurization
     if (hullIntegrity <= 0.0) {
         internalPressure *= (1.0 - 0.5 * simdt);
         if (internalPressure < 0.0) internalPressure = 0.0;
     }
 
-    if (airlockOpen && inVacuum) {
-        internalPressure -= 2.0e4 * simdt;
+    // Airlock equalization
+    if (airlockOpen) {
+        // Simple equalization towards envPressure
+        double rate = 0.5; // per second
+        double diff = envPressure - internalPressure;
+        internalPressure += diff * rate * simdt;
         if (internalPressure < 0.0) internalPressure = 0.0;
     }
 
+    // Internal oxygen consumption
     internalOxygen -= simdt * 1.0;
     if (internalOxygen < 0.0) internalOxygen = 0.0;
 
+    // Radiation
     double effectiveRad = envRadiation * (1.0 - radiationShield);
     if (effectiveRad > 0.1) {
         hullIntegrity -= simdt * 0.0005 * effectiveRad;
     }
 
-    double tempDelta = envTemperature - 20.0;
+    // Temperature stress
+    double tempDelta = envTemperature - 20.0; // assume internal target 20°C
     tempDelta *= (1.0 - thermalInsulation);
     if (std::fabs(tempDelta) > 50.0) {
-        hullIntegrity -= simdt * 0.0005 * (std::fabs(tempDelta) - 50.0) / 50.0;
+        hullIntegrity -= simdt * 0.0005 *
+                         (std::fabs(tempDelta) - 50.0) / 50.0;
     }
 
     hullIntegrity = Clamp(hullIntegrity, 0.0, 1.0);
+}
+
+void SurvivalShip::SpawnEVA()
+{
+    if (internalPressure < 5.0e4) {
+        oapiWriteLog("SurvivalShip: Internal pressure too low to EVA");
+        return;
+    }
+
+    // Get airlock position in global coords: offset in local frame
+    VECTOR3 airlockLocal = _V(0, 0, -5); // adjust to your model
+    VECTOR3 airlockGlobal;
+    Local2Global(airlockLocal, airlockGlobal);
+
+    VECTOR3 vel;
+    GetGlobalVel(vel);
+
+    char name[64];
+    sprintf(name, "EVA-%d", rand() % 10000);
+
+    VESSELSTATUS vs;
+    memset(&vs, 0, sizeof(vs));
+    vs.version = 2;
+    vs.rbody   = GetSurfaceRef();
+    vs.rpos    = airlockGlobal;
+    vs.rvel    = vel;
+    vs.arot    = _V(0,0,0);
+    vs.status  = 0;
+
+    OBJHANDLE hEVA = oapiCreateVesselEx(name, "EVA", &vs);
+    if (hEVA) {
+        oapiWriteLog("SurvivalShip: EVA spawned");
+        oapiSetFocusObject(hEVA);
+    }
+
+    // Optional: airlock opens during EVA
+    airlockOpen = true;
 }
 
 void SurvivalShip::clbkPreStep(double simt, double simdt, double mjd)
@@ -155,10 +202,15 @@ int SurvivalShip::clbkConsumeBufferedKey(DWORD key, bool down, char *kstate)
 
     if (key == OAPI_KEY_A) {
         airlockOpen = !airlockOpen;
-        if (airlockOpen)
-            oapiWriteLog("SurvivalShip: Airlock opened");
-        else
-            oapiWriteLog("SurvivalShip: Airlock closed");
+        oapiWriteLog(airlockOpen ?
+                     "SurvivalShip: Airlock opened" :
+                     "SurvivalShip: Airlock closed");
+        return 1;
+    }
+
+    if (key == OAPI_KEY_E) {
+        // Spawn EVA at airlock
+        SpawnEVA();
         return 1;
     }
 
@@ -181,9 +233,11 @@ void SurvivalShip::clbkDrawHUD(int mode, const HUDPAINTSPEC *hps, HDC hDC)
     sprintf(buf, "Env P: %.1f kPa", envPressure / 1000.0);
     TextOut(hDC, 20, 80, buf, (int)strlen(buf));
 
-    sprintf(buf, "Env Rad: %.2f  Temp: %.1f C", envRadiation, envTemperature);
+    sprintf(buf, "Env Rad: %.2f Temp: %.1f C", envRadiation, envTemperature);
     TextOut(hDC, 20, 100, buf, (int)strlen(buf));
 
     sprintf(buf, "Airlock: %s", airlockOpen ? "OPEN" : "CLOSED");
     TextOut(hDC, 20, 120, buf, (int)strlen(buf));
+
+    TextOut(hDC, 20, 140, "E: EVA | A: Toggle airlock", 28);
 }
