@@ -80,7 +80,6 @@ void SurvivalShip::UpdateEnvironment(double simdt)
         inVacuum    = true;
     }
 
-    // Radiation
     double baseRad = currentProfile.surfaceRadiation;
     if (currentProfile.gasGiant) {
         if (alt < 0) baseRad = 1.0;
@@ -89,11 +88,9 @@ void SurvivalShip::UpdateEnvironment(double simdt)
     }
     envRadiation = Clamp(baseRad, 0.0, 1.0);
 
-    // Temperature
     if (inAtmosphere && currentProfile.hasAtmosphere) {
         double T = GetAtmTemperature();
         double tempC = T - 273.15;
-        // Blend with profile baseline
         envTemperature = 0.5 * tempC + 0.5 * currentProfile.baseTemp;
     } else {
         envTemperature = currentProfile.baseTemp;
@@ -120,13 +117,11 @@ void SurvivalShip::ApplyRandomMicrometeorites(double simdt)
 
 void SurvivalShip::ApplyEnvironmentToShip(double simdt)
 {
-    // Hull breach
     if (hullIntegrity <= 0.0) {
         internalPressure *= (1.0 - 0.5 * simdt);
         if (internalPressure < 0.0) internalPressure = 0.0;
     }
 
-    // Airlock equalization with environment (dangerous on bad planets)
     if (airlockOpen) {
         double rate = 0.5;
         double diff = envPressure - internalPressure;
@@ -137,23 +132,19 @@ void SurvivalShip::ApplyEnvironmentToShip(double simdt)
     internalOxygen -= simdt * 1.0;
     if (internalOxygen < 0.0) internalOxygen = 0.0;
 
-    // Radiation vs hull
     double effectiveRad = envRadiation * (1.0 - radiationShield);
     if (effectiveRad > 0.1) {
         hullIntegrity -= simdt * 0.0005 * effectiveRad;
     }
 
-    // Corrosive atmospheres (like Venus) slowly damage hull
     if (currentProfile.corrosive && inAtmosphere) {
         hullIntegrity -= simdt * 0.0005;
     }
 
-    // Gas giants: impossible environment
     if (currentProfile.gasGiant && inAtmosphere) {
         hullIntegrity -= simdt * 0.01;
     }
 
-    // Temperature stress vs internal ~20°C
     double tempDelta = envTemperature - 20.0;
     tempDelta *= (1.0 - thermalInsulation);
     if (std::fabs(tempDelta) > 50.0) {
@@ -171,7 +162,6 @@ void SurvivalShip::SpawnEVA()
         return;
     }
 
-    // If atmosphere is highly toxic or corrosive, warn (still allow for now).
     if (currentProfile.corrosive || currentProfile.atmToxicity > 0.8) {
         oapiWriteLog("SurvivalShip: WARNING - EVA into lethal atmosphere");
     }
