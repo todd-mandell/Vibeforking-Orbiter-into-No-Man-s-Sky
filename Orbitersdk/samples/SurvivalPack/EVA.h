@@ -4,6 +4,12 @@
 #include <string>
 #include <map>
 
+struct IonBattery {
+    double capacity;   // max charge units
+    double charge;     // current charge
+    bool   damaged;    // if true, leaks radiation
+};
+
 class EVA : public VESSEL2 {
 public:
     EVA(OBJHANDLE hVessel, int flightmodel);
@@ -20,16 +26,27 @@ private:
     double suitIntegrity;   // 0–1
     double health;          // 0–1
 
-    // Suit limits / protection
+    // Base suit limits / protection (no upgrades)
     double maxSafePressure;       // Pa
     double maxSafeTempLow;        // °C
     double maxSafeTempHigh;       // °C
-    double radiationShieldFactor; // 0–1
-    double toxicityProtection;    // 0–1
+    double baseRadiationShield;   // 0–1
+    double baseToxicProtection;   // 0–1
     double thermalInsulation;     // 0–1
     double suitInternalTemp;      // °C
     double suitCoolingPower;      // °C “absorbed”
     double suitHeatingPower;      // °C “added”
+
+    // Upgrade: Toxic shield (NMS-style)
+    double toxicShieldCapacity;   // max toxic shield units
+    double toxicShieldCharge;     // current shield units
+    double toxicShieldEfficiency; // extra protection scaling
+    double toxicShieldDrainRate;  // per second in toxic env
+    bool   toxicShieldOnline;     // toggle if needed
+
+    // Mystical ION battery
+    IonBattery ion;
+    double     ionLeakFactor;     // how much radiation per unit charge when damaged
 
     // Inventory
     std::map<std::string, int> inventory;
@@ -63,4 +80,11 @@ private:
     void   ApplyRandomMicrometeorites(double simdt);
 
     void   TryReenterShip();
+
+    // Upgrade & crafting logic
+    void   UpdateToxicShield(double simdt);
+    void   ApplyIonBatteryEffects(double simdt);
+    bool   ConsumeIonCharge(double amount);
+    void   RechargeToxicShieldFromIon();
+    void   CraftIonCell(); // craft charge using mined resources
 };
