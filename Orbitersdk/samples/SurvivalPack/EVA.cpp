@@ -1,5 +1,6 @@
 #include "EVA.h"
 #include <cmath>
+#include <cstring>
 
 static double Clamp(double v, double lo, double hi)
 {
@@ -28,7 +29,7 @@ EVA::EVA(OBJHANDLE hVessel, int flightmodel)
 
     miningRange   = 3.0;
     inMiningRange = false;
-    resourcePos   = _V(10, 0, 10);
+    resourcePos   = _V(10, 0, 10);   // test resource location
 
     inventory["Crystal"] = 0;
 
@@ -82,7 +83,7 @@ double EVA::ComputeVacuumTemperature()
     double dist = length(myPos - sunPos);
     double AU   = 1.496e11;
 
-    double flux = 1361.0 * (AU * AU) / (dist * dist);
+    double flux  = 1361.0 * (AU * AU) / (dist * dist);
     double sigma = 5.670374419e-8;
     double tempK = pow(flux / sigma, 0.25);
     return tempK - 273.15;
@@ -165,25 +166,23 @@ void EVA::UpdateEnvironment(double simdt)
         envPressure = std::max(envPressure, 2.0e5);
     }
 
-    if (inVacuum)      envTemperature = ComputeVacuumTemperature();
-    else if (underwater) envTemperature = ComputeWaterTemperature(-alt);
-    else               envTemperature = ComputeAtmosphereTemperature();
+    if (inVacuum)         envTemperature = ComputeVacuumTemperature();
+    else if (underwater)  envTemperature = ComputeWaterTemperature(-alt);
+    else                  envTemperature = ComputeAtmosphereTemperature();
 }
 
-// Micrometeorites — probabilistic hits in vacuum
+// Micrometeorites (simple random hits)
 
 void EVA::ApplyRandomMicrometeorites(double simdt)
 {
     if (!inVacuum) return;
     if (health <= 0.0) return;
 
-    // Chance per second (tune)
     double hitsPerHour = 0.1;
     double p = hitsPerHour / 3600.0 * simdt;
-
     double r = (double)rand() / (double)RAND_MAX;
     if (r < p) {
-        double dmg = 0.1; // 10% suit damage
+        double dmg = 0.1;
         suitIntegrity -= dmg;
         if (suitIntegrity < 0.0) suitIntegrity = 0.0;
         oapiWriteLog("EVA: Micrometeorite hit!");
@@ -207,7 +206,7 @@ void EVA::ApplyEnvironmentEffects(double simdt)
 
     // Pressure
     if (envPressure > maxSafePressure) {
-        double over = envPressure - maxSafePressure;
+        double over    = envPressure - maxSafePressure;
         double dmgRate = over / maxSafePressure;
         suitIntegrity -= simdt * 0.01 * dmgRate;
         health        -= simdt * 0.01 * dmgRate;
@@ -246,6 +245,46 @@ void EVA::ApplyEnvironmentEffects(double simdt)
     health        = Clamp(health, 0.0, 1.0);
 }
 
+// EVA re-enter ship: find nearest SurvivalShip and delete EVA
+
+void EVA::TryReenterShip()
+{
+    OBJHANDLE self = GetHandle();
+    VECTOR3 myPos;
+    Local2Global(_V(0,0,0), myPos);
+
+    OBJHANDLE bestShip = NULL;
+    double    bestDist = 1000.0; // max search radius
+
+    DWORD nv = oapiGetVesselCount();
+    for (DWORD i = 0; i < nv; ++i) {
+        OBJHANDLE hV = oapiGetVesselByIndex(i);
+        if (hV == self) continue;
+
+        VESSEL *v = oapiGetVesselInterface(hV);
+        if (!v) continue;
+
+        char classname[64] = {0};
+        v->GetClassName(classname, 63);
+        if (std::strcmp(classname, "SurvivalShip") != 0)
+            continue;
+
+        VECTOR3 pos;
+        oapiGetGlobalPos(hV, &pos);
+        double dist = length(pos - myPos);
+        if (dist < bestDist) {
+            bestDist = dist;
+            bestShip = hV;
+        }
+    }
+
+    if (bestShip && bestDist < 5.0) { // within 5m
+        oapiWriteLog("EVA: Re-entering SurvivalShip");
+        oapiSetFocusObject(bestShip);
+        oapiDeleteVessel(self);
+    }
+}
+
 void EVA::clbkPreStep(double simt, double simdt, double mjd)
 {
     UpdateEnvironment(simdt);
@@ -264,6 +303,13 @@ int EVA::clbkConsumeBufferedKey(DWORD key, bool down, char *kstate)
         MineResource();
         return 1;
     }
+
+    if (key == OAPI_KEY_E) {
+        // Try to re-enter the nearest SurvivalShip
+        TryReenterShip();
+        return 1;
+    }
+
     return 0;
 }
 
@@ -283,7 +329,7 @@ void EVA::clbkDrawHUD(int mode, const HUDPAINTSPEC *hps, HDC hDC)
     sprintf(buf, "P: %.1f kPa", envPressure / 1000.0);
     TextOut(hDC, 20, 80, buf, (int)strlen(buf));
 
-    sprintf(buf, "Rad: %.2f Tox: %.2f", envRadiation, envToxicity);
+    sprintf(buf, "Rad: %.2f  Tox: %.2f", envRadiation, envToxicity);
     TextOut(hDC, 20, 100, buf, (int)strlen(buf));
 
     sprintf(buf, "Temp: %.1f C", envTemperature);
@@ -299,6 +345,8 @@ void EVA::clbkDrawHUD(int mode, const HUDPAINTSPEC *hps, HDC hDC)
     else if (inAtmosphere)
         TextOut(hDC, 20, 160, "ATMOSPHERE", 10);
 
+    TextOut(hDC, 20, 180, "E: Re-enter ship (near airlock)", 32);
+
     if (inMiningRange)
-        TextOut(hDC, 20, 180, "Press M to Mine", 14);
+        TextOut(hDC, 20, 200, "M: Mine resource", 16);
 }
