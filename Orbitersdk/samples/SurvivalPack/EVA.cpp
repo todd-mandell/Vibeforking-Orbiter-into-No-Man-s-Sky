@@ -29,7 +29,7 @@ EVA::EVA(OBJHANDLE hVessel, int flightmodel)
 
     miningRange   = 3.0;
     inMiningRange = false;
-    resourcePos   = _V(10, 0, 10);   // test resource location
+    resourcePos   = _V(10, 0, 10);
 
     inventory["Crystal"] = 0;
 
@@ -40,6 +40,8 @@ EVA::EVA(OBJHANDLE hVessel, int flightmodel)
     underwater     = false;
     inAtmosphere   = false;
     inVacuum       = true;
+
+    currentProfile = PlanetHazardProfile{};
 }
 
 void EVA::clbkSetClassCaps(FILEHANDLE cfg)
@@ -47,7 +49,6 @@ void EVA::clbkSetClassCaps(FILEHANDLE cfg)
     SetEmptyMass(120.0);
     SetSize(0.5);
 
-    // Simple jetpack thruster
     THRUSTER_HANDLE th = CreateThruster(_V(0,0,0), _V(0,1,0), 50);
     AddExhaust(th, 0.1, 0.1);
 }
@@ -91,16 +92,41 @@ double EVA::ComputeVacuumTemperature()
 
 double EVA::ComputeAtmosphereTemperature()
 {
+    // Use planet profile as baseline, with some local variation from AtmTemperature if available.
     double T = GetAtmTemperature(); // K
-    double tempC = T - 273.15;
-    double moderated = suitInternalTemp + (tempC - suitInternalTemp) * (1.0 - thermalInsulation);
+    double tempC_atm = T - 273.15;
+
+    // Blend profile base temp with actual ambient; profile drives overall climate.
+    double temp = 0.5 * tempC_atm + 0.5 * currentProfile.baseTemp;
+
+    // Add day/night variance loosely based on solar incidence.
+    VECTOR3 nml;
+    GetSurfaceNormal(GetSurfaceRef(), GetLongitude(), GetLatitude(), nml);
+    VECTOR3 sunDir;
+    OBJHANDLE hSun = oapiGetObjectByName("Sun");
+    if (hSun) {
+        VECTOR3 sunPos, myPos;
+        oapiGetGlobalPos(hSun, &sunPos);
+        Local2Global(_V(0,0,0), myPos);
+        sunDir = sunPos - myPos;
+        sunDir /= length(sunDir);
+        double dot = dotp(nml, sunDir);
+        double factor = Clamp(dot, -1.0, 1.0); // day/night factor
+        temp += currentProfile.tempVariance * factor * 0.5;
+    }
+
+    double moderated = suitInternalTemp +
+                       (temp - suitInternalTemp) * (1.0 - thermalInsulation);
     return moderated;
 }
 
 double EVA::ComputeWaterTemperature(double depth)
 {
-    double temp = 15.0 - depth * 0.02;
-    if (temp < 2.0) temp = 2.0;
+    // Use planet baseline but bias towards near-freezing water.
+    double temp = 4.0;
+    if (currentProfile.oceanWorld) {
+        temp = 0.0; // icy oceans
+    }
     double moderated = suitInternalTemp + (temp - suitInternalTemp) * 0.8;
     return moderated;
 }
@@ -115,13 +141,17 @@ void EVA::UpdateEnvironment(double simdt)
 
     OBJHANDLE hRef = GetSurfaceRef();
     if (!hRef) {
-        envPressure    = 0.0;
-        envRadiation   = 2.0;
-        envToxicity    = 0.0;
-        inVacuum       = true;
+        // Deep space: no primary body.
+        envPressure  = 0.0;
+        envRadiation = 0.7;
+        envToxicity  = 0.0;
+        inVacuum     = true;
+        currentProfile = PlanetHazardProfile{};
         envTemperature = ComputeVacuumTemperature();
         return;
     }
+
+    currentProfile = GetPlanetHazardProfile(hRef);
 
     double radius = oapiGetSize(hRef);
     VECTOR3 gpos;
@@ -133,12 +163,14 @@ void EVA::UpdateEnvironment(double simdt)
     double alt = r - radius;
 
     ATMOSPHEREPARAM atm;
-    bool hasAtm = GetAtmosphericParams(atm) != 0;
+    bool hasAtm = GetAtmosphericParams(atm) != 0 && currentProfile.hasAtmosphere;
     if (hasAtm) {
         envPressure = GetAtmPressure();
         if (envPressure > 0.0) {
             inAtmosphere = true;
-            if (alt < 0.0 && envPressure > 1.0e5) {
+
+            // Treat below "sea level" on ocean worlds as underwater.
+            if (alt < 0.0 && currentProfile.oceanWorld) {
                 underwater = true;
             }
         } else {
@@ -149,29 +181,42 @@ void EVA::UpdateEnvironment(double simdt)
         inVacuum    = true;
     }
 
-    double baseRad = 1.0;
-    if (inVacuum) {
-        baseRad = 2.0;
-        if (alt > 1.0e6) baseRad = 3.0;
+    // Radiation: start from planet baseline, adjust with altitude.
+    double baseRad = currentProfile.surfaceRadiation;
+    if (currentProfile.gasGiant) {
+        // Gas giants: rapidly rising radiation as you go "down".
+        if (alt < 0) baseRad = 1.0;
     } else {
-        if (envPressure > 5.0e4) baseRad = 0.5;
-        if (envPressure > 1.0e5) baseRad = 0.2;
+        if (alt > 1.0e6) baseRad += 0.2;
     }
-    envRadiation = baseRad;
+    envRadiation = Clamp(baseRad, 0.0, 1.0);
 
-    if (inAtmosphere) envToxicity = 1.0;
-    else              envToxicity = 0.0;
+    // Toxicity: atmosphere toxicity or zero in vacuum.
+    if (inAtmosphere) {
+        envToxicity = currentProfile.atmToxicity;
+        if (currentProfile.corrosive) {
+            // Acid cloud planets are highly toxic.
+            envToxicity = 1.0;
+        }
+    } else {
+        envToxicity = 0.0;
+    }
+
     if (underwater) {
-        envToxicity = std::max(envToxicity, 0.5);
-        envPressure = std::max(envPressure, 2.0e5);
+        envPressure = std::max(envPressure, 2.0e5); // at least ~2 atm
     }
 
-    if (inVacuum)         envTemperature = ComputeVacuumTemperature();
-    else if (underwater)  envTemperature = ComputeWaterTemperature(-alt);
-    else                  envTemperature = ComputeAtmosphereTemperature();
+    // Temperature selection
+    if (inVacuum) {
+        envTemperature = ComputeVacuumTemperature();
+    } else if (underwater) {
+        envTemperature = ComputeWaterTemperature(-alt);
+    } else {
+        envTemperature = ComputeAtmosphereTemperature();
+    }
 }
 
-// Micrometeorites (simple random hits)
+// Micrometeorites
 
 void EVA::ApplyRandomMicrometeorites(double simdt)
 {
@@ -218,11 +263,21 @@ void EVA::ApplyEnvironmentEffects(double simdt)
         health -= simdt * 0.001 * effectiveRad;
     }
 
-    // Toxicity
-    double effectiveTox = envToxicity * (1.0 - toxicityProtection);
+    // Toxicity (including corrosive atmospheres)
+    double toxBase = envToxicity;
+    if (currentProfile.corrosive && inAtmosphere) {
+        toxBase = 1.0;
+    }
+    double effectiveTox = toxBase * (1.0 - toxicityProtection);
     if (effectiveTox > 0.1) {
         health        -= simdt * 0.002 * effectiveTox;
-        suitIntegrity -= simdt * 0.001 * effectiveTox;
+        suitIntegrity -= simdt * 0.0015 * effectiveTox;
+    }
+
+    // Gas giants: instant death
+    if (currentProfile.gasGiant && inAtmosphere) {
+        suitIntegrity -= simdt * 1.0;
+        health        -= simdt * 1.0;
     }
 
     // Temperature
@@ -245,7 +300,7 @@ void EVA::ApplyEnvironmentEffects(double simdt)
     health        = Clamp(health, 0.0, 1.0);
 }
 
-// EVA re-enter ship: find nearest SurvivalShip and delete EVA
+// EVA re-enter ship
 
 void EVA::TryReenterShip()
 {
@@ -254,7 +309,7 @@ void EVA::TryReenterShip()
     Local2Global(_V(0,0,0), myPos);
 
     OBJHANDLE bestShip = NULL;
-    double    bestDist = 1000.0; // max search radius
+    double    bestDist = 10.0;
 
     DWORD nv = oapiGetVesselCount();
     for (DWORD i = 0; i < nv; ++i) {
@@ -278,7 +333,7 @@ void EVA::TryReenterShip()
         }
     }
 
-    if (bestShip && bestDist < 5.0) { // within 5m
+    if (bestShip) {
         oapiWriteLog("EVA: Re-entering SurvivalShip");
         oapiSetFocusObject(bestShip);
         oapiDeleteVessel(self);
@@ -305,7 +360,6 @@ int EVA::clbkConsumeBufferedKey(DWORD key, bool down, char *kstate)
     }
 
     if (key == OAPI_KEY_E) {
-        // Try to re-enter the nearest SurvivalShip
         TryReenterShip();
         return 1;
     }
@@ -345,8 +399,6 @@ void EVA::clbkDrawHUD(int mode, const HUDPAINTSPEC *hps, HDC hDC)
     else if (inAtmosphere)
         TextOut(hDC, 20, 160, "ATMOSPHERE", 10);
 
-    TextOut(hDC, 20, 180, "E: Re-enter ship (near airlock)", 32);
-
-    if (inMiningRange)
-        TextOut(hDC, 20, 200, "M: Mine resource", 16);
+    TextOut(hDC, 20, 180, "E: Re-enter ship (near)", 23);
+    TextOut(hDC, 20, 200, "M: Mine resource", 16);
 }
