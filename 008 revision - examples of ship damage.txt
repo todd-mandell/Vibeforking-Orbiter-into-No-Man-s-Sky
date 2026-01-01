@@ -1,0 +1,80 @@
+💥 2. Yes — the ship can eventually be destroyed by gravity
+But only under extreme conditions, and only after a chain of realistic failures.
+Here are the exact scenarios where gravity can kill the ship:
+🪐 Example 1 — Descending into Jupiter’s atmosphere
+Gravity at Jupiter cloud tops: 24.79 m/s² Deep layers: >30 m/s²
+Your ship reacts like this:
+12–25 m/s² (high‑g zone)
+    • Hull integrity slowly decreases
+    • Internal oxygen drains faster
+    • Computer takes stress damage
+    • Hover mode becomes unstable
+    • Pulse engine becomes harder to control
+>25 m/s² (extreme‑g zone)
+    • Hull integrity drops rapidly
+    • Internal pressure collapses
+    • Electronics glitch
+    • Overheating accelerates
+    • Eventually the ship breaks apart
+This is a slow, dramatic failure, not instant death.
+🌑 Example 2 — Falling into a deep gravity well (e.g., close to a neutron star mod)
+If you place the ship near a body with:
+    • >30 m/s² gravity
+    • High radiation
+    • High temperature
+The combined effects will:
+    • Overheat the hull
+    • Overload the computer
+    • Collapse internal pressure
+    • Drain oxygen
+    • Cause structural failure
+Again — not instant, but inevitable.
+🌋 Example 3 — Hovering too long on a high‑gravity world
+Let’s say you land on a hypothetical super‑Earth with:
+    • 15–20 m/s² gravity
+Hover mode must fight gravity constantly.
+What happens:
+    • Main engine runs near max throttle
+    • Fuel drains rapidly
+    • Hull integrity slowly degrades from stress
+    • Computer takes strain damage
+    • If fuel runs out → ship falls → impact damage → destruction
+Gravity didn’t “kill” the ship directly — it forced the ship into a failure cascade.
+🪨 Example 4 — Crash landing due to gravity overpowering thrust
+If gravity > thrust capability:
+    • Hover mode can’t maintain altitude
+    • Ship descends
+    • RCS struggles
+    • Pulse engine can’t be used in atmosphere
+    • Impact destroys hull integrity
+This is realistic and matches your design goals.
+🌡️ Example 5 — High gravity + high temperature combo
+On Venus:
+    • Gravity is Earth‑like
+    • But temperature is extreme
+    • Atmosphere is corrosive
+Gravity doesn’t kill you, but it:
+    • Makes hover mode less efficient
+    • Increases engine load
+    • Increases heat buildup
+    • Accelerates hull damage
+Eventually the ship overheats or corrodes to death.
+🎯 Summary
+Yes — the ship can be destroyed by gravity, but only through realistic, progressive failure, not arbitrary damage.
+Gravity contributes to destruction by:
+    • Increasing structural stress
+    • Increasing engine load
+    • Increasing oxygen consumption
+    • Making hover mode unstable
+    • Making pulse engine unreliable
+    • Causing pressure collapse
+    • Accelerating overheating
+    • Damaging electronics
+    • Leading to crashes
+This is exactly the survival‑sim behavior you wanted.
+If you want, I can now:
+    • Add gravity dampeners as an upgrade
+    • Add gravity warnings to the computer
+    • Add gravity‑induced hull buckling effects
+    • Add gravity‑dependent fuel consumption
+    • Add gravity‑dependent maneuverability penalties
