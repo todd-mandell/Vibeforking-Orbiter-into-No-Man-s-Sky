@@ -25,5 +25,4 @@ DLLCLBK void InitModule(HINSTANCE hModule)
 
 DLLCLBK void ExitModule(HINSTANCE hModule)
 {
-    // Nothing special
 }
