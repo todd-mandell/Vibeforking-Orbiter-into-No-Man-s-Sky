@@ -17,35 +17,33 @@ EVA::EVA(OBJHANDLE hVessel, int flightmodel)
     suitIntegrity = 1.0;
     health        = 1.0;
 
-    maxSafePressure   = 5.0e5;
-    maxSafeTempLow    = -40.0;
-    maxSafeTempHigh   =  60.0;
-    baseRadiationShield = 0.7;  // 30% gets through by default
-    baseToxicProtection = 0.4;  // 40% baseline toxic protection
+    maxSafePressure     = 5.0e5;
+    maxSafeTempLow      = -40.0;
+    maxSafeTempHigh     =  60.0;
+    baseRadiationShield = 0.7;
+    baseToxicProtection = 0.4;
     thermalInsulation   = 0.7;
     suitInternalTemp    = 20.0;
     suitCoolingPower    = 5.0;
     suitHeatingPower    = 5.0;
 
-    // Toxic shield upgrade (NMS-like)
     toxicShieldCapacity   = 100.0;
-    toxicShieldCharge     = 0.0;    // starts empty; must be charged
-    toxicShieldEfficiency = 0.5;    // up to +50% extra protection
-    toxicShieldDrainRate  = 2.0;    // units/sec in full toxicity
+    toxicShieldCharge     = 0.0;
+    toxicShieldEfficiency = 0.5;
+    toxicShieldDrainRate  = 2.0;
     toxicShieldOnline     = true;
 
-    // Mystical ION battery
-    ion.capacity   = 200.0;  // big dense power store
-    ion.charge     = 0.0;
-    ion.damaged    = false;
-    ionLeakFactor  = 0.02;   // radiation per unit charge when damaged
+    ion.capacity  = 200.0;
+    ion.charge    = 0.0;
+    ion.damaged   = false;
+    ionLeakFactor = 0.02;
 
     miningRange   = 3.0;
     inMiningRange = false;
     resourcePos   = _V(10, 0, 10);
 
     inventory["Crystal"]  = 0;
-    inventory["ION_CORE"] = 0; // crafted item units, abstracted as “cells”
+    inventory["ION_CORE"] = 0;
 
     envPressure    = 0.0;
     envRadiation   = 0.0;
@@ -229,9 +227,8 @@ void EVA::ApplyRandomMicrometeorites(double simdt)
         suitIntegrity -= dmg;
         if (suitIntegrity < 0.0) suitIntegrity = 0.0;
 
-        // Chance to damage ION battery if hit while charged
         if (ion.charge > 0.0) {
-            double pDamage = 0.3; // 30% chance
+            double pDamage = 0.3;
             double r2 = (double)rand() / (double)RAND_MAX;
             if (r2 < pDamage) {
                 ion.damaged = true;
@@ -243,7 +240,7 @@ void EVA::ApplyRandomMicrometeorites(double simdt)
     }
 }
 
-// Toxic shield logic
+// Toxic shield
 
 void EVA::UpdateToxicShield(double simdt)
 {
@@ -253,7 +250,6 @@ void EVA::UpdateToxicShield(double simdt)
         return;
     }
 
-    // Drain shield based on toxicity intensity
     if (envToxicity > 0.05) {
         double drain = toxicShieldDrainRate * envToxicity * simdt;
         toxicShieldCharge -= drain;
@@ -261,7 +257,7 @@ void EVA::UpdateToxicShield(double simdt)
     }
 }
 
-// ION battery effects
+// ION battery
 
 bool EVA::ConsumeIonCharge(double amount)
 {
@@ -273,20 +269,16 @@ bool EVA::ConsumeIonCharge(double amount)
 
 void EVA::ApplyIonBatteryEffects(double simdt)
 {
-    // If damaged and still charged, leak radiation proportional to charge.
     if (ion.damaged && ion.charge > 0.0) {
-        double leak = ionLeakFactor * (ion.charge / ion.capacity);
-        // Turn leak into extra radiation exposure.
+        double leak   = ionLeakFactor * (ion.charge / ion.capacity);
         double radHit = leak * simdt;
         health        -= radHit * 0.5;
         suitIntegrity -= radHit * 0.5;
     }
 
-    // If suit integrity is completely gone and ION has large charge,
-    // trigger a catastrophic radiation spike (core rupture).
     if (suitIntegrity <= 0.0 && ion.charge > ion.capacity * 0.5) {
-        double burst = (ion.charge / ion.capacity); // 0–1
-        double dmg   = burst * 0.5; // up to 50% extra damage
+        double burst = (ion.charge / ion.capacity);
+        double dmg   = burst * 0.5;
         health -= dmg;
         ion.charge = 0.0;
         oapiWriteLog("EVA: ION core catastrophic failure - massive radiation burst");
@@ -296,13 +288,10 @@ void EVA::ApplyIonBatteryEffects(double simdt)
     suitIntegrity = Clamp(suitIntegrity, 0.0, 1.0);
 }
 
-// Recharge toxic shield using ION charge
-
 void EVA::RechargeToxicShieldFromIon()
 {
-    // One simple rule: 10 units of ION charge -> 25 units of toxic shield.
-    const double ionPerChunk   = 10.0;
-    const double shieldPerChunk= 25.0;
+    const double ionPerChunk    = 10.0;
+    const double shieldPerChunk = 25.0;
 
     if (toxicShieldCharge >= toxicShieldCapacity) {
         oapiWriteLog("EVA: Toxic shield already full");
@@ -320,11 +309,8 @@ void EVA::RechargeToxicShieldFromIon()
     oapiWriteLog("EVA: Toxic shield recharged using ION core");
 }
 
-// Craft ION charge from mined materials
-
 void EVA::CraftIonCell()
 {
-    // Example recipe: 5 Crystals -> 20 ION charge units.
     int crystals = inventory["Crystal"];
     if (crystals < 5) {
         oapiWriteLog("EVA: Not enough Crystals to craft ION charge");
@@ -337,13 +323,45 @@ void EVA::CraftIonCell()
     ion.charge += addCharge;
     if (ion.charge > ion.capacity) ion.charge = ion.capacity;
 
-    // Also track discrete ION_CORE items if desired.
     inventory["ION_CORE"] += 1;
 
     oapiWriteLog("EVA: Crafted ION charge from Crystals");
 }
 
-// Environment effects on suit & health (now using shield)
+// Gravity effects
+
+void EVA::ApplyGravityEffects(double simdt)
+{
+    VECTOR3 gvec;
+    GetGravityVector(gvec);
+    double g = length(gvec); // m/s^2
+
+    // Micro-g (<0.5): slow health degradation
+    if (g < 0.5) {
+        double dmg = (0.5 - g) * 0.0001;
+        health -= dmg * simdt;
+    }
+
+    // High-g (12–25): strain
+    if (g > 12.0 && g <= 25.0) {
+        double excess = g - 12.0;
+        health        -= simdt * 0.001 * excess;
+        suitIntegrity -= simdt * 0.0005 * excess;
+        suitOxygen    -= simdt * 0.2   * excess;
+        if (suitOxygen < 0.0) suitOxygen = 0.0;
+    }
+
+    // Extreme-g (>25): instant failure
+    if (g > 25.0) {
+        health        = 0.0;
+        suitIntegrity = 0.0;
+    }
+
+    health        = Clamp(health, 0.0, 1.0);
+    suitIntegrity = Clamp(suitIntegrity, 0.0, 1.0);
+}
+
+// Apply environment damage
 
 void EVA::ApplyEnvironmentEffects(double simdt)
 {
@@ -368,17 +386,16 @@ void EVA::ApplyEnvironmentEffects(double simdt)
         health        -= simdt * 0.01 * dmgRate;
     }
 
-    // Radiation (planet + any extra)
+    // Radiation
     double effectiveRad = envRadiation * (1.0 - baseRadiationShield);
     if (effectiveRad > 0.1) {
         health -= simdt * 0.001 * effectiveRad;
     }
 
-    // Toxicity with NMS-style shield
-    // Base protection + bonus from charged toxic shield.
+    // Toxicity with shield
     double shieldFactor = 0.0;
     if (toxicShieldOnline && toxicShieldCharge > 0.0) {
-        double frac = toxicShieldCharge / toxicShieldCapacity; // 0–1
+        double frac = toxicShieldCharge / toxicShieldCapacity;
         shieldFactor = toxicShieldEfficiency * frac;
     }
     double totalToxProtection = baseToxicProtection + shieldFactor;
@@ -394,7 +411,6 @@ void EVA::ApplyEnvironmentEffects(double simdt)
         suitIntegrity -= simdt * 0.0015 * effectiveTox;
     }
 
-    // Gas giants: impossible environment
     if (currentProfile.gasGiant && inAtmosphere) {
         suitIntegrity -= simdt * 1.0;
         health        -= simdt * 1.0;
@@ -416,11 +432,14 @@ void EVA::ApplyEnvironmentEffects(double simdt)
         suitIntegrity -= coldStress * 0.5 * simdt;
     }
 
+    // Gravity
+    ApplyGravityEffects(simdt);
+
     suitIntegrity = Clamp(suitIntegrity, 0.0, 1.0);
     health        = Clamp(health, 0.0, 1.0);
 }
 
-// EVA re-enter ship
+// Re-enter ship
 
 void EVA::TryReenterShip()
 {
@@ -464,7 +483,6 @@ void EVA::clbkPreStep(double simt, double simdt, double mjd)
 {
     UpdateEnvironment(simdt);
 
-    // Upgrade systems first (shield drain, ion leaks)
     UpdateToxicShield(simdt);
     ApplyIonBatteryEffects(simdt);
 
@@ -489,13 +507,11 @@ int EVA::clbkConsumeBufferedKey(DWORD key, bool down, char *kstate)
         return 1;
     }
 
-    // C: Craft ION charge from Crystals
     if (key == OAPI_KEY_C) {
         CraftIonCell();
         return 1;
     }
 
-    // R: Recharge toxic shield from ION charge
     if (key == OAPI_KEY_R) {
         RechargeToxicShieldFromIon();
         return 1;
@@ -536,13 +552,20 @@ void EVA::clbkDrawHUD(int mode, const HUDPAINTSPEC *hps, HDC hDC)
     sprintf(buf, "ToxicShield: %.0f / %.0f", toxicShieldCharge, toxicShieldCapacity);
     TextOut(hDC, 20, 180, buf, (int)strlen(buf));
 
-    if (underwater)
-        TextOut(hDC, 20, 200, "UNDERWATER", 10);
-    else if (inVacuum)
-        TextOut(hDC, 20, 200, "VACUUM", 6);
-    else if (inAtmosphere)
-        TextOut(hDC, 20, 200, "ATMOSPHERE", 10);
+    // Show local gravity
+    VECTOR3 gvec;
+    GetGravityVector(gvec);
+    double g = length(gvec);
+    sprintf(buf, "g: %.2f m/s^2", g);
+    TextOut(hDC, 20, 200, buf, (int)strlen(buf));
 
-    TextOut(hDC, 20, 220, "E: Re-enter ship | M: Mine", 28);
-    TextOut(hDC, 20, 240, "C: Craft ION | R: Recharge Toxic Shield", 40);
+    if (underwater)
+        TextOut(hDC, 20, 220, "UNDERWATER", 10);
+    else if (inVacuum)
+        TextOut(hDC, 20, 220, "VACUUM", 6);
+    else if (inAtmosphere)
+        TextOut(hDC, 20, 220, "ATMOSPHERE", 10);
+
+    TextOut(hDC, 20, 240, "E: Re-enter | M: Mine", 24);
+    TextOut(hDC, 20, 260, "C: Craft ION | R: Refill Toxic Shield", 39);
 }
