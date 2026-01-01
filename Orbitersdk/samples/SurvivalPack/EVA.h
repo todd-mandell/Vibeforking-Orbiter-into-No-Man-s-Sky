@@ -1,5 +1,6 @@
 #pragma once
 #include "orbitersdk.h"
+#include "PlanetHazards.h"
 #include <string>
 #include <map>
 
@@ -40,12 +41,13 @@ private:
 
     // Environment state
     double envPressure;     // Pa
-    double envRadiation;    // arbitrary units
+    double envRadiation;    // 0–1
     double envToxicity;     // 0–1
     double envTemperature;  // °C
     bool   underwater;
     bool   inAtmosphere;
     bool   inVacuum;
+    PlanetHazardProfile currentProfile;
 
     // Internal helpers
     bool   CheckProximity(const VECTOR3 &target, double range);
@@ -60,5 +62,5 @@ private:
 
     void   ApplyRandomMicrometeorites(double simdt);
 
-    void   TryReenterShip();  // find nearest SurvivalShip and re-enter
+    void   TryReenterShip();
 };
