@@ -1,9 +1,10 @@
 BEGIN_DESC
-Test EVA + SurvivalShip with survival systems:
-- Ship hull, pressure, O2, radiation, temp, micrometeorites, airlock
-- EVA suit with radiation, toxicity, pressure, temp, micrometeorites, mining
-- E: EVA from ship / re-enter ship
-- A: Toggle ship airlock
+Test EVA + SurvivalShip with:
+- Planet-specific hazards (pressure, toxicity, radiation, temperature)
+- Gravity effects on EVA health
+- Toxic shield + ION battery
+- Micrometeorites
+- EVA spawning/re-entry
 END_DESC
 
 BEGIN_ENVIRONMENT
