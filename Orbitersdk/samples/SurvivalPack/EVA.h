@@ -50,6 +50,7 @@ private:
     // Internal helpers
     bool   CheckProximity(const VECTOR3 &target, double range);
     void   MineResource();
+
     void   UpdateEnvironment(double simdt);
     void   ApplyEnvironmentEffects(double simdt);
 
@@ -58,4 +59,6 @@ private:
     double ComputeWaterTemperature(double depth);
 
     void   ApplyRandomMicrometeorites(double simdt);
+
+    void   TryReenterShip();  // find nearest SurvivalShip and re-enter
 };
